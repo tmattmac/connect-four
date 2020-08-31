@@ -146,7 +146,9 @@ function handleClick(evt) {
     }
 
     // check for tie
-    if (board.every(row => row.every(cell => cell))) endGame('It\'s a tie!');
+    if (board.every(row => row.every(cell => cell))) {
+      return endGame('It\'s a tie!');
+    }
 
     // switch players
     currPlayer = currPlayer === 1 ? 2 : 1;
