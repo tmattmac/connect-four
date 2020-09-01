@@ -81,7 +81,6 @@ function placeInTable(y, x) {
   const space = document.querySelector(`#space-${y}-${x}`);
   const piece = document.createElement('div');
 
-  const root = document.documentElement;
   const boardTop = document.querySelector('#board').getBoundingClientRect().top;
   const spacePos = space.getBoundingClientRect().top;
 
@@ -169,8 +168,6 @@ function updateDisplay() {
     currPlayer === 1 ? '--custom-red' : '--custom-blue'
   )
   root.style.setProperty('--player-color', newColor);
-
-  const boardTop = document.querySelector('#board').getBoundingClientRect().top;
 
   document.querySelector('#turn').innerText = `It is Player ${currPlayer}'s turn`;
 }
