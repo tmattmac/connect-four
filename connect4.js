@@ -8,210 +8,258 @@
 const WIDTH = 7;
 const HEIGHT = 6;
 
-let currPlayer = 1; // active player: 1 or 2
-let board = []; // array of rows, each row is array of cells  (board[y][x])
+class Game {
 
-/** makeBoard: create in-JS board structure:
- *    board = array of rows, each row is array of cells  (board[y][x])
+  constructor(width, height) {
+    const board = document.getElementById('board');
+
+    this.width = width;
+    this.height = height;
+
+    this.state = new GameState(width, height);
+    this.ui = new GameUI(board, width, height);
+
+    this.ui.addEventListener('topRowClick', this._handleClick.bind(this));
+    this.ui.enableUIInteraction();
+  }
+
+  _handleClick(e) {
+    const x = e.detail;
+    const y = this.state.placePiece(x);
+    if (y === null) return;
+
+    this.ui.disableUIInteraction();
+
+    const newPiece = this.ui.placeInTable(y, x, this.state.currPlayer);
+
+    newPiece.addEventListener('animFinished', () => {
+
+      const winner = this.state.checkForWin();
+      if (winner) {
+        return this.endGame(`Player ${winner} won!`);
+      }
+  
+      // check for tie
+      if (this.state.checkForTie()) {
+        return this.endGame('It\'s a tie!');
+      }
+
+      this.state.nextTurn();
+
+      this.ui.updateDisplay(this.state.currPlayer);
+      this.ui.enableUIInteraction();
+    });
+  }
+
+  endGame(msg) {
+    window.alert(msg);
+
+    // reset game
+    this.state = new GameState(this.width, this.height);
+    this.ui.clearHtmlBoard();
+    this.ui.updateDisplay(this.state.currPlayer);
+    this.ui.enableUIInteraction();
+  }
+}
+
+/**
+ * Class: GameState
+ * Maintains state information unrelated to presentation
+ * currPlayer: (1|2) represents which player's turn it is
+ * width: represents width of board
+ * height: represents height of board
  */
 
-function makeBoard() {
-  // set "board" to empty HEIGHT x WIDTH matrix array
-  const row = new Array(WIDTH).fill(null);
-  board = new Array(HEIGHT).fill().map(col => [...row]);
-}
+class GameState {
 
-/** makeHtmlBoard: make HTML table and row of column tops. */
-
-function makeHtmlBoard() {
-  // get "htmlBoard" variable from the item in HTML w/ID of "board"
-  const htmlBoard = document.querySelector('#board');
-
-  // create top table row where pieces will be dropped from
-  const top = document.createElement("tr");
-  top.setAttribute("id", "column-top");
-  top.classList.add('active');
-  top.addEventListener("click", handleClick);
-
-  // add WIDTH table cells to row
-  for (let x = 0; x < WIDTH; x++) {
-    const headCell = document.createElement("td");
-    headCell.setAttribute("id", x);
-    top.append(headCell);
+  constructor(width, height) {
+    this.currPlayer = 1;
+    this.width = width;
+    this.height = height;
+    this.initBoard();
   }
-  htmlBoard.append(top);
 
-  // generate rest of board
-  for (let y = 0; y < HEIGHT; y++) {
-    // create new row
-    const row = document.createElement("tr");
-    // for each row, add WIDTH table cells
-    for (let x = 0; x < WIDTH; x++) {
-      const cell = document.createElement("td");
-      cell.setAttribute("id", `space-${y}-${x}`);
-      row.append(cell);
+  /** 
+   * initBoard: create in-JS board structure:
+   * board = array of rows, each row is array of cells  (board[y][x])
+   */
+  initBoard() {
+    const row = new Array(this.width).fill(null);
+    this.board = new Array(this.height).fill().map(col => [...row]);
+  }
+
+  /**
+   * _findSpotForCol: given column x, return top empty y (null if filled)
+   */
+  _findSpotForCol(x) {
+    const y = this.board.findIndex(row => row[x]);
+    if (y === 0) return null;
+    return y === -1 ? this.height - 1 : y - 1;
+  }
+
+  /**
+   * placePiece: place piece in board at x, if possible
+   * returns y of placed piece, null if unable to place
+   */
+  placePiece(x) {
+    const y = this._findSpotForCol(x);
+    if (y === null) return null;
+    this.board[y][x] = this.currPlayer;
+    return y;
+  }
+
+  /**
+   * _nextTurn: switch to next player's turn
+   */
+  nextTurn() {
+    this.currPlayer = this.currPlayer === 1 ? 2 : 1;
+  }
+
+  /**
+   * checkForWin: check board cell-by-cell for "does a win start here?"
+   */
+  checkForWin() {
+    function _win(cells, _this) {
+      // Check four cells to see if they're all color of current player
+      //  - cells: list of four (y, x) cells
+      //  - returns true if all are legal coordinates & all match currPlayer
+  
+      return cells.every(
+        ([y, x]) =>
+          y >= 0 &&
+          y < _this.height &&
+          x >= 0 &&
+          x < _this.width &&
+          _this.board[y][x] === _this.currPlayer
+      );
     }
-    // add row to board
-    htmlBoard.append(row);
-  }
-}
-
-/** clearHtmlBoard: clear all game pieces from HTML board */
-
-function clearHtmlBoard() {
-  const htmlBoard = document.querySelector('#board');
-  htmlBoard.querySelectorAll('.piece').forEach(piece => piece.remove());
-  const top = document.querySelector('#column-top');
-  top.classList.add('active');
-  top.addEventListener("click", handleClick);
-}
-
-/** findSpotForCol: given column x, return top empty y (null if filled) */
-
-function findSpotForCol(x) {
-  let y = board.findIndex(row => row[x]);
-  if (y === 0) return null;
-  return y === -1 ? HEIGHT - 1 : y - 1;
-}
-
-/** placeInTable: update DOM to place piece into HTML table of board */
-
-function placeInTable(y, x) {
-  // make a div and insert into correct table cell
-  const space = document.querySelector(`#space-${y}-${x}`);
-  const piece = document.createElement('div');
-
-  const root = document.documentElement;
-  const boardTop = document.querySelector('#board').getBoundingClientRect().top;
-  const spacePos = space.getBoundingClientRect().top;
-
-  // animation stuffs
-  let pos = boardTop - spacePos;
-  let rate = 0;
-
-  piece.style.transform = `translateY(${pos}px)`;
-  piece.classList.add('piece', `p${currPlayer}`);
-  space.appendChild(piece);
-
-  const animFinished = new Event('animFinished');
-  const update = () => {
-    pos = Math.min(0, pos + (rate += 5));
-    piece.style.transform = `translateY(${pos}px)`;
-    if (pos < 0) requestAnimationFrame(update);
-    else piece.dispatchEvent(animFinished);
-  }
-  requestAnimationFrame(update);
-
-  return piece;
-}
-
-/** endGame: announce game end */
-
-function endGame(msg) {
-  window.alert(msg);
-
-  // reset game
-  makeBoard();
-  clearHtmlBoard();
-  currPlayer = 1;
-  updateDisplay();
-}
-
-/** handleClick: handle click of column top to play piece */
-
-function handleClick(evt) {
-  // get x from ID of clicked cell
-  const x = +evt.target.id;
-
-  // get next spot in column (if none, ignore click)
-  const y = findSpotForCol(x);
-  if (y === null) {
-    return;
-  }
-
-  // place piece in board and add to HTML table
-  const newPiece = placeInTable(y, x);
-
-  // update in-memory board
-  board[y][x] = currPlayer;
-
-  const top = evt.target.parentElement;
-  top.removeEventListener('click', handleClick);
-  top.classList.toggle('active');
-
-  newPiece.addEventListener('animFinished', () => {
-    // check for win
-    if (checkForWin()) {
-      return endGame(`Player ${currPlayer} won!`);
-    }
-
-    // check for tie
-    if (board.every(row => row.every(cell => cell))) {
-      return endGame('It\'s a tie!');
-    }
-
-    // switch players
-    currPlayer = currPlayer === 1 ? 2 : 1;
-
-    // update display
-    updateDisplay();
-
-    // allow interaction again
-    top.classList.toggle('active');
-    top.addEventListener('click', handleClick);
-  });
-}
-
-/** updateDisplay: updates GUI elements */
-function updateDisplay() {
-  const root = document.documentElement;
-  const newColor = getComputedStyle(root).getPropertyValue(
-    currPlayer === 1 ? '--custom-red' : '--custom-blue'
-  )
-  root.style.setProperty('--player-color', newColor);
-
-  const boardTop = document.querySelector('#board').getBoundingClientRect().top;
-
-  document.querySelector('#turn').innerText = `It is Player ${currPlayer}'s turn`;
-}
-
-/** checkForWin: check board cell-by-cell for "does a win start here?" */
-
-function checkForWin() {
-  function _win(cells) {
-    // Check four cells to see if they're all color of current player
-    //  - cells: list of four (y, x) cells
-    //  - returns true if all are legal coordinates & all match currPlayer
-
-    return cells.every(
-      ([y, x]) =>
-        y >= 0 &&
-        y < HEIGHT &&
-        x >= 0 &&
-        x < WIDTH &&
-        board[y][x] === currPlayer
-    );
-  }
-
-  // TODO: read and understand this code. Add comments to help you.
-
-  // start at each cell in the board
-  for (let y = 0; y < HEIGHT; y++) {
-    for (let x = 0; x < WIDTH; x++) {
-      // for each cell, create an array starting at the coordinates for that 
-      // cell and go through the next three sequential cells per direction
-      const horiz = [[y, x], [y, x + 1], [y, x + 2], [y, x + 3]];
-      const vert = [[y, x], [y + 1, x], [y + 2, x], [y + 3, x]];
-      const diagDR = [[y, x], [y + 1, x + 1], [y + 2, x + 2], [y + 3, x + 3]];
-      const diagDL = [[y, x], [y + 1, x - 1], [y + 2, x - 2], [y + 3, x - 3]];
-
-      // if any configuration results in a win condition, return true
-      if (_win(horiz) || _win(vert) || _win(diagDR) || _win(diagDL)) {
-        return true;
+    
+    // start at each cell in the board
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        // for each cell, create an array starting at the coordinates for that 
+        // cell and go through the next three sequential cells per direction
+        const horiz = [[y, x], [y, x + 1], [y, x + 2], [y, x + 3]];
+        const vert = [[y, x], [y + 1, x], [y + 2, x], [y + 3, x]];
+        const diagDR = [[y, x], [y + 1, x + 1], [y + 2, x + 2], [y + 3, x + 3]];
+        const diagDL = [[y, x], [y + 1, x - 1], [y + 2, x - 2], [y + 3, x - 3]];
+  
+        // if any configuration results in a win condition, return the winning player
+        if (_win(horiz, this) || _win(vert, this) || _win(diagDR, this) || _win(diagDL, this)) {
+          return this.currPlayer;
+        }
       }
     }
   }
+
+  /**
+   * checkForTie: what it says on the tin
+   */
+  checkForTie() {
+    return this.board.every(row => row.every(cell => cell));
+  }
 }
 
-makeBoard();
-makeHtmlBoard();
+/**
+ * Class: GameUI
+ * Represents the view of the game
+ * board: represents HTML board element
+ * top: represents top row of HTML board
+ */
+class GameUI extends EventTarget {
+
+  constructor(board, width, height) {
+    super();
+    this.board = board;
+    this._makeHtmlBoard(width, height);
+    this._boundHandleClick = this._handleClick.bind(this);
+  }
+
+  _makeHtmlBoard(width, height) {
+    // create top table row where pieces will be dropped from
+    const top = document.createElement("tr");
+    top.setAttribute("id", "column-top");
+
+    // add WIDTH table cells to row
+    for (let x = 0; x < width; x++) {
+      const headCell = document.createElement("td");
+      headCell.setAttribute("id", x);
+      top.append(headCell);
+    }
+    this.board.append(top);
+    this.top = top;
+
+    // generate rest of board
+    for (let y = 0; y < height; y++) {
+      // create new row
+      const row = document.createElement("tr");
+      // for each row, add WIDTH table cells
+      for (let x = 0; x < WIDTH; x++) {
+        const cell = document.createElement("td");
+        cell.setAttribute("id", `space-${y}-${x}`);
+        row.append(cell);
+      }
+      // add row to board
+      this.board.append(row);
+    }
+  }
+
+  clearHtmlBoard() {
+    this.board.querySelectorAll('.piece').forEach(piece => piece.remove());
+  }
+
+  _handleClick(e) {
+    const event = new CustomEvent('topRowClick', { detail: +e.target.id });
+    this.dispatchEvent(event);
+  }
+
+  enableUIInteraction() {
+    this.top.classList.add('active');
+    this.top.addEventListener('click', this._boundHandleClick);
+  }
+
+  disableUIInteraction() {
+    this.top.classList.remove('active');
+    this.top.removeEventListener('click', this._boundHandleClick);
+  }
+
+  updateDisplay(player) {
+    const root = document.documentElement;
+    const newColor = getComputedStyle(root).getPropertyValue(
+      player === 1 ? '--custom-red' : '--custom-blue'
+    );
+    root.style.setProperty('--player-color', newColor);
+  
+    document.querySelector('#turn').innerText = `It is Player ${player}'s turn`;
+  }
+
+  placeInTable(y, x, player) {
+    // make a div and insert into correct table cell
+    const space = document.querySelector(`#space-${y}-${x}`);
+    const piece = document.createElement('div');
+    
+    // animation stuffs
+    const boardTop = this.board.getBoundingClientRect().top;
+    const spacePos = space.getBoundingClientRect().top;
+  
+    let pos = boardTop - spacePos;
+    let rate = 0;
+  
+    piece.style.transform = `translateY(${pos}px)`;
+    piece.classList.add('piece', `p${player}`);
+    space.appendChild(piece);
+  
+    const animFinished = new Event('animFinished');
+    const update = () => {
+      pos = Math.min(0, pos + (rate += 5));
+      piece.style.transform = `translateY(${pos}px)`;
+      if (pos < 0) requestAnimationFrame(update);
+      else piece.dispatchEvent(animFinished);
+    }
+    requestAnimationFrame(update);
+  
+    return piece;
+  }
+}
+
+new Game(WIDTH, HEIGHT);
